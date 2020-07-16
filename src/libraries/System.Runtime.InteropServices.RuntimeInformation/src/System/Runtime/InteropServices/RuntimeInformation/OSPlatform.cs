@@ -15,9 +15,6 @@ namespace System.Runtime.InteropServices
 
         public static OSPlatform Linux { get; } = new OSPlatform("LINUX");
 
-        public static OSPlatform macOS { get; } = new OSPlatform("MACOS");
-
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)] // superseded by macOS
         public static OSPlatform OSX { get; } = new OSPlatform("OSX");
 
         public static OSPlatform iOS { get; } = new OSPlatform("IOS");
@@ -28,21 +25,14 @@ namespace System.Runtime.InteropServices
 
         public static OSPlatform Windows { get; } = new OSPlatform("WINDOWS");
 
-        internal bool IsCurrent { get; } // this information is cached because it's frequently used
-
         private OSPlatform(string osPlatform)
         {
             if (osPlatform == null) throw new ArgumentNullException(nameof(osPlatform));
             if (osPlatform.Length == 0) throw new ArgumentException(SR.Argument_EmptyValue, nameof(osPlatform));
 
             _osPlatform = osPlatform;
-            IsCurrent = RuntimeInformation.IsCurrentOSPlatform(osPlatform);
         }
 
-        /// <summary>
-        /// Creates a new OSPlatform instance.
-        /// </summary>
-        /// <remarks>If you plan to call this method frequently, please consider caching its result.</remarks>
         public static OSPlatform Create(string osPlatform)
         {
             return new OSPlatform(osPlatform);
@@ -55,17 +45,17 @@ namespace System.Runtime.InteropServices
 
         internal bool Equals(string? other)
         {
-            return string.Equals(_osPlatform, other, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(_osPlatform, other, StringComparison.Ordinal);
         }
 
         public override bool Equals(object? obj)
         {
-            return obj is OSPlatform osPlatform && Equals(osPlatform);
+            return obj is OSPlatform && Equals((OSPlatform)obj);
         }
 
         public override int GetHashCode()
         {
-            return _osPlatform == null ? 0 : _osPlatform.GetHashCode(StringComparison.OrdinalIgnoreCase);
+            return _osPlatform == null ? 0 : _osPlatform.GetHashCode();
         }
 
         public override string ToString()

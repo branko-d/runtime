@@ -14,11 +14,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
             yield return new object[] { OSPlatform.Linux };
             yield return new object[] { OSPlatform.OSX };
             yield return new object[] { OSPlatform.Browser };
-            yield return new object[] { OSPlatform.macOS };
-            yield return new object[] { OSPlatform.iOS };
-            yield return new object[] { OSPlatform.tvOS };
-            yield return new object[] { OSPlatform.watchOS };
-            yield return new object[] { OSPlatform.Android };
         }
 
         [Fact]
@@ -54,8 +49,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
             Version current = Environment.OSVersion.Version;
 
             Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater($"{osPlatform}{current}"));
-            Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater($"{osPlatform.ToString().ToLower()}{current}"));
-            Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater($"{osPlatform.ToString().ToUpper()}{current}"));
 
             Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater(osPlatform, current.Major));
 
@@ -85,8 +78,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
 
             Version newer = new Version(currentVersion.Major + 1, 0);
             Assert.False(RuntimeInformation.IsOSPlatformOrLater($"{osPlatform}{newer}"));
-            Assert.False(RuntimeInformation.IsOSPlatformOrLater($"{osPlatform.ToString().ToLower()}{newer}"));
-            Assert.False(RuntimeInformation.IsOSPlatformOrLater($"{osPlatform.ToString().ToUpper()}{newer}"));
             Assert.False(RuntimeInformation.IsOSPlatformOrLater(osPlatform, newer.Major));
 
             newer = new Version(currentVersion.Major, currentVersion.Minor + 1);
@@ -113,8 +104,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
 
             Version older = new Version(current.Major - 1, 0);
             Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater($"{osPlatform}{older}"));
-            Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater($"{osPlatform.ToString().ToLower()}{older}"));
-            Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater($"{osPlatform.ToString().ToUpper()}{older}"));
             Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformOrLater(osPlatform, older.Major));
 
             if (current.Minor > 0)
@@ -171,8 +160,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
             Version current = Environment.OSVersion.Version;
 
             Assert.False(RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform}{current}"));
-            Assert.False(RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform.ToString().ToLower()}{current}"));
-            Assert.False(RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform.ToString().ToUpper()}{current}"));
 
             Assert.False(RuntimeInformation.IsOSPlatformEarlierThan(osPlatform, current.Major));
 
@@ -203,8 +190,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
 
             Version newer = new Version(current.Major + 1, 0);
             Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform}{newer}"));
-            Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform.ToString().ToLower()}{newer}"));
-            Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform.ToString().ToUpper()}{newer}"));
             Assert.Equal(isCurrentPlatfom, RuntimeInformation.IsOSPlatformEarlierThan(osPlatform, newer.Major));
 
             newer = new Version(current.Major, current.Minor + 1);
@@ -230,8 +215,6 @@ namespace System.Runtime.InteropServices.RuntimeInformationTests
 
             Version older = new Version(current.Major - 1, 0);
             Assert.False(RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform}{older}"));
-            Assert.False(RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform.ToString().ToLower()}{older}"));
-            Assert.False(RuntimeInformation.IsOSPlatformEarlierThan($"{osPlatform.ToString().ToUpper()}{older}"));
             Assert.False(RuntimeInformation.IsOSPlatformEarlierThan(osPlatform, older.Major));
 
             if (current.Minor > 0)

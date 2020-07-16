@@ -48,10 +48,5 @@ namespace System.Runtime.InteropServices
         /// </remarks>
         public static string RuntimeIdentifier =>
             s_runtimeIdentifier ??= AppContext.GetData("RUNTIME_IDENTIFIER") as string ?? "unknown";
-
-        /// <summary>
-        /// Indicates whether the current application is running on the specified platform.
-        /// </summary>
-        public static bool IsOSPlatform(OSPlatform osPlatform) => osPlatform.IsCurrent;
     }
 }
