@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -172,43 +173,208 @@ namespace System.Collections.Generic
             }
         }
 
-        private static int PickPivotAndPartition(Span<T> keys, Comparison<T> comparer)
+        private static int PickPivotAndPartition(Span<T> keys, Comparison<T> comparison)
         {
+
+            // WARNING: Keep the implementation synchronized with ArraySortHelper<TKey, TValue>.PickPivotAndPartition.
+
             Debug.Assert(keys.Length >= Array.IntrosortSizeThreshold);
-            Debug.Assert(comparer != null);
+            Debug.Assert(comparison != null);
+
+            // Find median-of-three and use it as a pivot. Move the pivot into the local variable, which leaves a "hole"
+            // where the pivot was. Then make sure the hole is at the end (move it there if necessary).
 
             int hi = keys.Length - 1;
+            int lo = SortUtils.Median3(keys, comparison, 0, hi >> 1, hi); // Temporarily co-opt `lo` as a pivot index.
+            T pivot = keys[lo]; // Make the hole.
+            if (lo != hi)
+                keys[lo] = keys[hi]; // Move the hole to the end.
+            lo = 0;
 
-            // Compute median-of-three.  But also partition them, since we've done the comparison.
-            int middle = hi >> 1;
+            // At this point, the pivot element is in the local variable `pivot`, and the hole is at `keys[hi]`.
+            // This allows us to partition with fewer moves than the usual Hoare partition (by avoiding the swap, and the associated move to the temporary variable):
+            //
+            //      1. The hole is to the right. We fill it by the left-most element that should go to the right of the pivot. This leaves the hole where the element was (on the left).
+            //      2. The hole is now to the left. We fill it by the right-most element that should go to the left of the pivot. This leaves the hole where the element was (on the right).
+            //      3. Repeat until we exhaust the elements, then move the pivot from the local variable to the hole. At this point, the hole no longer exists and the span is partitioned.
+            //
+            // Example:
+            //
+            //      lo                                      (1)
+            //       |
+            //       9 1 7 8 2 -         pivot=4
+            //                 |
+            //                 hi
+            //
+            //      lo                                      (2)
+            //       |
+            //       - 1 7 8 2 9         pivot=4
+            //               |
+            //               hi
+            //
+            //        lo                                    (1)
+            //         |
+            //       2 1 7 8 - 9         pivot=4
+            //               |
+            //               hi
+            //
+            //          lo                                  (1)
+            //           |
+            //       2 1 7 8 - 9         pivot=4
+            //               |
+            //               hi
+            //
+            //          lo                                  (2)
+            //           |
+            //       2 1 - 8 7 9         pivot=4
+            //             |
+            //             hi
+            //
+            //          lo                                  (2)
+            //           |
+            //       2 1 - 8 7 9         pivot=4
+            //           |
+            //           hi
+            //
+            //          lo                                  (3)
+            //           |
+            //       2 1 4 8 7 9
+            //           |
+            //           hi
 
-            // Sort lo, mid and hi appropriately, then pick mid as the pivot.
-            SwapIfGreater(keys, comparer, 0, middle);  // swap the low with the mid point
-            SwapIfGreater(keys, comparer, 0, hi);   // swap the low with the high
-            SwapIfGreater(keys, comparer, middle, hi); // swap the middle with the high
-
-            T pivot = keys[middle];
-            Swap(keys, middle, hi - 1);
-            int left = 0, right = hi - 1;  // We already partitioned lo and hi and put the pivot in hi - 1.  And we pre-increment & decrement below.
-
-            while (left < right)
+            while (true)
             {
-                while (comparer(keys[++left], pivot) < 0) ;
-                while (comparer(pivot, keys[--right]) < 0) ;
 
-                if (left >= right)
-                    break;
+                // Left to right.
+                while (true)
+                {
 
-                Swap(keys, left, right);
+                    // No more elements?
+                    if (lo == hi)
+                        goto end;
+
+                    // The element which is currently on the left should go to the right of the pivot?
+                    if (comparison(keys[lo], pivot) > 0)
+                    {
+                        keys[hi--] = keys[lo]; // Fill the hole on the right and create a new hole on the left.
+                        break; // Change the direction.
+                    }
+
+                    ++lo;
+
+                }
+
+                // Right to left.
+                while (true)
+                {
+
+                    // No more elements?
+                    if (lo == hi)
+                        goto end;
+
+                    // The element which is currently on the right should go to the left of the pivot?
+                    if (comparison(keys[hi], pivot) < 0)
+                    {
+                        keys[lo++] = keys[hi]; // Fill the hole on the left and create a new hole on the right.
+                        break; // Change the direction.
+                    }
+
+                    --hi;
+
+                }
+
             }
 
-            // Put pivot in the right location.
-            if (left != hi - 1)
-            {
-                Swap(keys, left, hi - 1);
-            }
-            return left;
+            end:
+
+            keys[lo] = pivot; // Plug the hole.
+            return lo;
+
+            // int hi = keys.Length - 1;
+            // int lo = hi >> 1; // Temporarily co-opt `lo` as middle.
+            //
+            // T pivot; // Local variable to store the pivot.
+            //
+            // if (comparison(keys[hi], keys[0]) <= 0) { // hi <= 0
+            //     if (comparison(keys[lo], keys[hi]) <= 0) { // lo <= hi
+            //         // lo <= hi <= 0
+            //         pivot = keys[hi]; // The hole is left where the pivot was.
+            //     }
+            //     else { // hi < lo
+            //         // hi <= 0 && hi < lo
+            //         if (comparison(keys[lo], keys[0]) <= 0) { // lo <= 0
+            //             // hi < lo < 0
+            //             pivot = keys[lo];
+            //             keys[lo] = keys[hi]; // Make the hole.
+            //         }
+            //         else { // 0 < lo
+            //             // hi <= 0 < lo
+            //             pivot = keys[0];
+            //             keys[0] = keys[hi]; // Make the hole.
+            //         }
+            //     }
+            // }
+            // else { // 0 < hi
+            //     if (comparison(keys[hi], keys[lo]) <= 0) { // hi <= lo
+            //         // 0 < hi <= lo
+            //         pivot = keys[hi]; // The hole is left where the pivot was.
+            //     }
+            //     else { // lo < hi
+            //         // 0 < hi && lo < hi
+            //         if (comparison(keys[0], keys[lo]) <= 0) { // 0 <= lo
+            //             // 0 <= lo < hi
+            //             pivot = keys[lo];
+            //             keys[lo] = keys[hi]; // Make the hole.
+            //         }
+            //         else { // lo < 0
+            //             // lo < 0 < hi
+            //             pivot = keys[0];
+            //             keys[0] = keys[hi]; // Make the hole.
+            //         }
+            //     }
+            // }
+            //
+            // lo = 0; // It has been pointing to the middle.
+
         }
+
+        // private static int PickPivotAndPartition(Span<T> keys, Comparison<T> comparer)
+        // {
+        //     Debug.Assert(keys.Length >= Array.IntrosortSizeThreshold);
+        //     Debug.Assert(comparer != null);
+        //
+        //     int hi = keys.Length - 1;
+        //
+        //     // Compute median-of-three.  But also partition them, since we've done the comparison.
+        //     int middle = hi >> 1;
+        //
+        //     // Sort lo, mid and hi appropriately, then pick mid as the pivot.
+        //     SwapIfGreater(keys, comparer, 0, middle);  // swap the low with the mid point
+        //     SwapIfGreater(keys, comparer, 0, hi);   // swap the low with the high
+        //     SwapIfGreater(keys, comparer, middle, hi); // swap the middle with the high
+        //
+        //     T pivot = keys[middle];
+        //     Swap(keys, middle, hi - 1);
+        //     int left = 0, right = hi - 1;  // We already partitioned lo and hi and put the pivot in hi - 1.  And we pre-increment & decrement below.
+        //
+        //     while (left < right)
+        //     {
+        //         while (comparer(keys[++left], pivot) < 0) ;
+        //         while (comparer(pivot, keys[--right]) < 0) ;
+        //
+        //         if (left >= right)
+        //             break;
+        //
+        //         Swap(keys, left, right);
+        //     }
+        //
+        //     // Put pivot in the right location.
+        //     if (left != hi - 1)
+        //     {
+        //         Swap(keys, left, hi - 1);
+        //     }
+        //     return left;
+        // }
 
         private static void HeapSort(Span<T> keys, Comparison<T> comparer)
         {
@@ -720,41 +886,111 @@ namespace System.Collections.Generic
 
         private static int PickPivotAndPartition(Span<TKey> keys, Span<TValue> values, IComparer<TKey> comparer)
         {
+            return PickPivotAndPartition(keys, values, comparer.Compare);
+        }
+
+        private static int PickPivotAndPartition(Span<TKey> keys, Span<TValue> values, Comparison<TKey> comparison)
+        {
+
+            // WARNING: Keep the implementation synchronized with ArraySortHelper<T>.PickPivotAndPartition.
+
             Debug.Assert(keys.Length >= Array.IntrosortSizeThreshold);
-            Debug.Assert(comparer != null);
+            Debug.Assert(comparison != null);
 
             int hi = keys.Length - 1;
+            int lo = SortUtils.Median3(keys, comparison, 0, hi >> 1, hi);
+            var pivotKey = keys[lo];
+            var pivotValue = values[lo];
+            if (lo != hi)
+                keys[lo] = keys[hi];
+            lo = 0;
 
-            // Compute median-of-three.  But also partition them, since we've done the comparison.
-            int middle = hi >> 1;
-
-            // Sort lo, mid and hi appropriately, then pick mid as the pivot.
-            SwapIfGreaterWithValues(keys, values, comparer, 0, middle);  // swap the low with the mid point
-            SwapIfGreaterWithValues(keys, values, comparer, 0, hi);   // swap the low with the high
-            SwapIfGreaterWithValues(keys, values, comparer, middle, hi); // swap the middle with the high
-
-            TKey pivot = keys[middle];
-            Swap(keys, values, middle, hi - 1);
-            int left = 0, right = hi - 1;  // We already partitioned lo and hi and put the pivot in hi - 1.  And we pre-increment & decrement below.
-
-            while (left < right)
+            while (true)
             {
-                while (comparer.Compare(keys[++left], pivot) < 0) ;
-                while (comparer.Compare(pivot, keys[--right]) < 0) ;
 
-                if (left >= right)
-                    break;
+                while (true)
+                {
 
-                Swap(keys, values, left, right);
+                    if (lo == hi)
+                        goto end;
+
+                    if (comparison(keys[lo], pivotKey) > 0)
+                    {
+                        keys[hi] = keys[lo];
+                        values[hi] = values[lo];
+                        --hi;
+                        break;
+                    }
+
+                    ++lo;
+
+                }
+
+                while (true)
+                {
+
+                    if (lo == hi)
+                        goto end;
+
+                    if (comparison(keys[hi], pivotKey) < 0)
+                    {
+                        keys[lo] = keys[hi];
+                        values[lo] = values[hi];
+                        ++lo;
+                        break;
+                    }
+
+                    --hi;
+
+                }
+
             }
 
-            // Put pivot in the right location.
-            if (left != hi - 1)
-            {
-                Swap(keys, values, left, hi - 1);
-            }
-            return left;
+            end:
+
+            keys[lo] = pivotKey;
+            values[lo] = pivotValue;
+            return lo;
+
         }
+
+        // private static int PickPivotAndPartition(Span<TKey> keys, Span<TValue> values, IComparer<TKey> comparer)
+        // {
+        //     Debug.Assert(keys.Length >= Array.IntrosortSizeThreshold);
+        //     Debug.Assert(comparer != null);
+        //
+        //     int hi = keys.Length - 1;
+        //
+        //     // Compute median-of-three.  But also partition them, since we've done the comparison.
+        //     int middle = hi >> 1;
+        //
+        //     // Sort lo, mid and hi appropriately, then pick mid as the pivot.
+        //     SwapIfGreaterWithValues(keys, values, comparer, 0, middle);  // swap the low with the mid point
+        //     SwapIfGreaterWithValues(keys, values, comparer, 0, hi);   // swap the low with the high
+        //     SwapIfGreaterWithValues(keys, values, comparer, middle, hi); // swap the middle with the high
+        //
+        //     TKey pivot = keys[middle];
+        //     Swap(keys, values, middle, hi - 1);
+        //     int left = 0, right = hi - 1;  // We already partitioned lo and hi and put the pivot in hi - 1.  And we pre-increment & decrement below.
+        //
+        //     while (left < right)
+        //     {
+        //         while (comparer.Compare(keys[++left], pivot) < 0) ;
+        //         while (comparer.Compare(pivot, keys[--right]) < 0) ;
+        //
+        //         if (left >= right)
+        //             break;
+        //
+        //         Swap(keys, values, left, right);
+        //     }
+        //
+        //     // Put pivot in the right location.
+        //     if (left != hi - 1)
+        //     {
+        //         Swap(keys, values, left, hi - 1);
+        //     }
+        //     return left;
+        // }
 
         private static void HeapSort(Span<TKey> keys, Span<TValue> values, IComparer<TKey> comparer)
         {
@@ -1141,5 +1377,57 @@ namespace System.Collections.Generic
 
             return left;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Median3<T>(Span<T> keys, Comparison<T> comparison, int a, int b, int c)
+        {
+
+            if (comparison(keys[c], keys[a]) <= 0) // c <= a
+            {
+                if (comparison(keys[b], keys[c]) <= 0) // b <= c
+                {
+                    // b <= c <= a
+                    return c;
+                }
+                else // c < b
+                {
+                    // c <= a && c < b
+                    if (comparison(keys[b], keys[a]) <= 0) // b <= a
+                    {
+                        // c < b <= a
+                        return b;
+                    }
+                    else // a < b
+                    {
+                        // c <= a < b
+                        return a;
+                    }
+                }
+            }
+            else // a < c
+            {
+                if (comparison(keys[c], keys[b]) <= 0) // c <= b
+                {
+                    // a < c <= b
+                    return c;
+                }
+                else // b < c
+                {
+                    // a < c && b < c
+                    if (comparison(keys[a], keys[b]) <= 0) // a <= b
+                    {
+                        // a <= b < c
+                        return b;
+                    }
+                    else // b < a
+                    {
+                        // b < a < c
+                        return a;
+                    }
+                }
+            }
+
+        }
+
     }
 }
